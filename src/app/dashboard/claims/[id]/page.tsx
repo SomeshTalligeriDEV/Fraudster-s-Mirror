@@ -1,10 +1,12 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, useParams } from 'next/navigation';
 import {
   AlertCircle,
   ArrowLeft,
   CheckCircle,
-  FileText,
   MessageSquare,
   Paperclip,
   User,
@@ -13,59 +15,66 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { ClaimDetailClient } from '@/components/dashboard/claim-detail-client';
-import { mockClaims } from '@/lib/data';
 import { cn } from '@/lib/utils';
 import { getFraudExplanation } from '@/ai/flows/explainable-ai-output';
-import { assessClaimRisk } from '@/ai/flows/claim-risk-assessment';
-import { detectDocumentForgery } from '@/ai/flows/document-forgery-detection';
+import { useClaims } from '@/hooks/use-claims';
+import { Skeleton } from '@/components/ui/skeleton';
 
-async function getClaimData(id: string) {
-  const claim = mockClaims.find(c => c.id === id);
+export default function ClaimDetailPage() {
+  const params = useParams();
+  const { getClaimById } = useClaims();
+  const [explanation, setExplanation] = useState('');
+  const [isLoadingExplanation, setIsLoadingExplanation] = useState(true);
+
+  const id = typeof params.id === 'string' ? params.id : '';
+  const claim = getClaimById(id);
+
+  useEffect(() => {
+    if (claim) {
+      setIsLoadingExplanation(true);
+      getFraudExplanation({
+        claimDetails: claim.description,
+        riskScore: claim.riskScore,
+        riskLabel: claim.riskLabel,
+        documentAnalysis: `Document forgery check: ${claim.documents.map(d => d.forgeryCheck).join(', ')}`,
+        claimHistory: "No significant claim history found." // Placeholder
+      }).then(result => {
+        setExplanation(result.explanation);
+      }).catch(err => {
+        console.error("Failed to get explanation", err);
+        setExplanation("Could not load AI explanation.");
+      }).finally(() => {
+        setIsLoadingExplanation(false);
+      });
+    }
+  }, [claim]);
+
   if (!claim) {
-    return null;
+    return (
+      <div className="flex h-full items-center justify-center">
+          <p>Loading claim...</p>
+      </div>
+    )
   }
   
-  // These are placeholders for actual AI calls.
-  // In a real app, you might only call this if the explanation isn't already stored.
-  const explanation = await getFraudExplanation({
-      claimDetails: claim.description,
-      riskScore: claim.riskScore,
-      riskLabel: claim.riskLabel,
-      documentAnalysis: `Document forgery check: ${claim.documents.map(d => d.forgeryCheck).join(', ')}`,
-      claimHistory: "No significant claim history found." // Placeholder
-  });
-
-  return { claim, explanation: explanation.explanation };
-}
-
-const RiskBadge = ({ level }: { level: 'Low' | 'Medium' | 'High' }) => (
-  <Badge
-    className={cn(
-      'text-xs font-semibold',
-      level === 'Low' && 'bg-green-500/20 text-green-700 dark:text-green-300',
-      level === 'Medium' && 'bg-amber-500/20 text-amber-700 dark:text-amber-300',
-      level === 'High' && 'bg-red-500/20 text-red-700 dark:text-red-300'
-    )}
-  >
-    {level} Risk
-  </Badge>
-);
-
-export default async function ClaimDetailPage({ params }: { params: { id: string } }) {
-  const data = await getClaimData(params.id);
-
-  if (!data) {
-    notFound();
+  // This check prevents a flash of the notFound page before the context is hydrated
+  if (!claim && id) {
+     const [isReady, setIsReady] = useState(false);
+     useEffect(() => {
+        const timer = setTimeout(() => setIsReady(true), 500); // Wait for context
+        return () => clearTimeout(timer);
+    }, []);
+    
+    if (isReady) notFound();
+    return <p>Loading claim...</p>;
   }
-  
-  const { claim, explanation } = data;
+
 
   const riskColor =
     claim.riskLabel === 'High'
@@ -114,10 +123,14 @@ export default async function ClaimDetailPage({ params }: { params: { id: string
               <Separator />
               <div className="space-y-4">
                 <h4 className="font-semibold">AI Explanation</h4>
-                <div className="flex items-start gap-4 rounded-md border bg-muted/50 p-4">
-                  <AlertCircle className="mt-1 h-5 w-5 flex-shrink-0 text-amber-500" />
-                  <p className="text-sm">{explanation}</p>
-                </div>
+                {isLoadingExplanation ? (
+                  <Skeleton className="h-20 w-full" />
+                ) : (
+                  <div className="flex items-start gap-4 rounded-md border bg-muted/50 p-4">
+                    <AlertCircle className="mt-1 h-5 w-5 flex-shrink-0 text-amber-500" />
+                    <p className="text-sm">{explanation}</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

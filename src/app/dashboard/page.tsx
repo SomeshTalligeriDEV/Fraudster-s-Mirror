@@ -1,11 +1,14 @@
+'use client';
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { OverviewStats } from '@/components/dashboard/overview-stats';
 import { ClaimsChart } from '@/components/dashboard/claims-chart';
 import { RecentClaims } from '@/components/dashboard/recent-claims';
-import { mockClaims } from '@/lib/data';
+import { useClaims } from '@/hooks/use-claims';
 
 export default function DashboardPage() {
-  const highRiskClaims = mockClaims.filter(c => c.riskLabel === 'High').slice(0, 5);
+  const { claims } = useClaims();
+  const highRiskClaims = claims.filter(c => c.riskLabel === 'High').slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -16,7 +19,7 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <OverviewStats claims={mockClaims} />
+      <OverviewStats claims={claims} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
@@ -25,7 +28,7 @@ export default function DashboardPage() {
             <CardDescription>Distribution of claims based on AI-assessed risk.</CardDescription>
           </CardHeader>
           <CardContent className="pl-2">
-            <ClaimsChart claims={mockClaims} />
+            <ClaimsChart claims={claims} />
           </CardContent>
         </Card>
         <Card className="lg:col-span-2">

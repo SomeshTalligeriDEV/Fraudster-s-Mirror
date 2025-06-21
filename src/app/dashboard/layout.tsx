@@ -34,6 +34,7 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { mockUser } from '@/lib/data';
+import { ClaimsProvider } from './claims-provider';
 
 export default function DashboardLayout({
   children,
@@ -131,7 +132,7 @@ export default function DashboardLayout({
             </DropdownMenu>
           </div>
         </header>
-        <main className="flex-1 p-4 sm:p-6">{children}</main>
+        <main className="flex-1 p-4 sm:p-6"><ClaimsProvider>{children}</ClaimsProvider></main>
       </SidebarInset>
     </SidebarProvider>
   );

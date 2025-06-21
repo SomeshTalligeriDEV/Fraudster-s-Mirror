@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -20,7 +21,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { FileUploader } from '@/components/file-uploader';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
-import { useState } from 'react';
+import { useClaims } from '@/hooks/use-claims';
+import { assessClaimRisk } from '@/ai/flows/claim-risk-assessment';
+import { detectDocumentForgery } from '@/ai/flows/document-forgery-detection';
+import type { Claim } from '@/lib/types';
 
 const formSchema = z.object({
   policyNo: z.string().regex(/^POL-\d{5,}$/, 'Invalid policy number format (e.g., POL-12345).'),
@@ -29,9 +33,21 @@ const formSchema = z.object({
   documents: z.array(z.instanceof(File)).optional(),
 });
 
+const fileToDataUri = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve(reader.result as string);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
 export function NewClaimForm() {
   const router = useRouter();
   const { toast } = useToast();
+  const { addClaim, claims } = useClaims();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const form = useForm<z.infer<typeof formSchema>>({
@@ -44,20 +60,67 @@ export function NewClaimForm() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
-    console.log(values);
-    
-    // Simulate API call
-    setTimeout(() => {
-        setIsSubmitting(false);
-        toast({
-            title: 'Claim Submitted Successfully',
-            description: `Your claim for policy ${values.policyNo} has been received.`,
-            variant: 'default',
+    try {
+      let forgeryCheckResults = 'No documents submitted.';
+      const documentChecks: Claim['documents'] = [];
+
+      if (values.documents && values.documents.length > 0) {
+        const forgeryDetectionPromises = values.documents.map(async (doc) => {
+          const documentDataUri = await fileToDataUri(doc);
+          const result = await detectDocumentForgery({ documentDataUri });
+          return {
+            name: doc.name,
+            url: '#', // In a real app, this would be a storage URL
+            forgeryCheck: result.forgerySuspected ? 'Suspected' : 'Passed',
+            reason: result.reason,
+          };
         });
-        router.push('/dashboard/claims');
-    }, 2000);
+        const results = await Promise.all(forgeryDetectionPromises);
+        documentChecks.push(...results.map(r => ({ name: r.name, url: r.url, forgeryCheck: r.forgeryCheck })));
+        forgeryCheckResults = results.map(r => `${r.name}: ${r.forgeryCheck} (${r.reason || 'No specific reason'})`).join('\n');
+      }
+
+      const riskAssessment = await assessClaimRisk({
+        claimDetails: `Policy: ${values.policyNo}, Amount: $${values.amount}, Description: ${values.description}`,
+        documentResults: forgeryCheckResults,
+      });
+
+      const newClaim: Claim = {
+        id: `CLM-00${claims.length + 1}`,
+        policyNo: values.policyNo,
+        amount: values.amount,
+        description: values.description,
+        submittedAt: new Date().toISOString(),
+        status: 'Pending',
+        riskScore: riskAssessment.riskScore,
+        riskLabel: riskAssessment.riskLabel,
+        documents: documentChecks,
+        claimant: { name: 'Alex Doe', avatarUrl: 'https://placehold.co/100x100.png' }, // Mock user
+        location: { lat: 34.0522, lng: -118.2437 }, // Mock location
+        comments: [],
+      };
+
+      addClaim(newClaim);
+      
+      toast({
+        title: 'Claim Submitted & Analyzed',
+        description: `Risk assessment complete. The claim has been added to the list.`,
+        variant: 'default',
+      });
+      router.push('/dashboard/claims');
+
+    } catch (error) {
+      console.error("Error submitting claim:", error);
+      toast({
+        title: 'Submission Failed',
+        description: 'There was an error processing your claim. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (

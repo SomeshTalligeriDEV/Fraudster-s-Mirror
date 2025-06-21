@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { MessageSquare, Send } from 'lucide-react';
+import { useClaims } from '@/hooks/use-claims';
 
 const StatusBadge = ({ status }: { status: Claim['status'] }) => (
   <Badge
@@ -26,20 +28,23 @@ const StatusBadge = ({ status }: { status: Claim['status'] }) => (
 );
 
 export function ClaimDetailClient({ claim }: { claim: Claim }) {
-  const [currentStatus, setCurrentStatus] = useState<Claim['status']>(claim.status);
-  const [comments, setComments] = useState(claim.comments);
+  const { updateClaim } = useClaims();
   const [newComment, setNewComment] = useState('');
+
+  const handleStatusChange = (status: Claim['status']) => {
+    updateClaim({ ...claim, status });
+  };
 
   const handleAddComment = () => {
     if (newComment.trim()) {
       const addedComment = {
-        id: (comments.length + 1).toString(),
-        author: 'Alex Doe',
+        id: uuidv4(),
+        author: 'Alex Doe', // mock user
         avatarUrl: 'https://placehold.co/100x100.png',
         text: newComment,
         timestamp: new Date().toISOString(),
       };
-      setComments([...comments, addedComment]);
+      updateClaim({ ...claim, comments: [...claim.comments, addedComment] });
       setNewComment('');
     }
   };
@@ -49,12 +54,12 @@ export function ClaimDetailClient({ claim }: { claim: Claim }) {
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Status & Actions</CardTitle>
-          <StatusBadge status={currentStatus} />
+          <StatusBadge status={claim.status} />
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-2">
-          <Button variant="outline" onClick={() => setCurrentStatus('Investigation')}>Investigate</Button>
-          <Button variant="destructive" onClick={() => setCurrentStatus('Rejected')}>Reject</Button>
-          <Button className="col-span-2" onClick={() => setCurrentStatus('Approved')}>Approve Claim</Button>
+          <Button variant="outline" onClick={() => handleStatusChange('Investigation')}>Investigate</Button>
+          <Button variant="destructive" onClick={() => handleStatusChange('Rejected')}>Reject</Button>
+          <Button className="col-span-2" onClick={() => handleStatusChange('Approved')}>Approve Claim</Button>
         </CardContent>
       </Card>
       
@@ -67,7 +72,7 @@ export function ClaimDetailClient({ claim }: { claim: Claim }) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-4 max-h-60 overflow-y-auto pr-2">
-            {comments.map(comment => (
+            {claim.comments.map(comment => (
               <div key={comment.id} className="flex items-start gap-3">
                 <Avatar className="h-8 w-8">
                   <AvatarImage src={comment.avatarUrl} alt={comment.author} data-ai-hint="person" />
